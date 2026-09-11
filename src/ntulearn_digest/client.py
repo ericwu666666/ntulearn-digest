@@ -64,6 +64,8 @@ class Blackboard:
                     body = e.read().decode("utf-8", "replace")
                 except Exception:
                     pass
+                finally:
+                    e.close()
                 if e.code == 429 or e.code >= 500:
                     last = ApiError(e.code, url, body)
                     wait = e.headers.get("Retry-After") if e.headers else None

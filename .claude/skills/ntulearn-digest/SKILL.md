@@ -7,16 +7,17 @@ description: Sync the user's NTULearn (Blackboard Ultra) courses with the ntulea
 
 The CLI does the mechanical part (API, downloads, calendar, dashboard). Your job is the part that needs reading: syllabi, course outlines, announcements and slides.
 
-## 1. Make sure the CLI works
+## 1. Sync
 
 ```bash
-pip install -e .          # once, from the repo root
-ntulearn sync -o ntulearn-output
+pip install -e .            # once, from the repo root (inside a virtual environment)
+ntulearn go --no-open -o ntulearn-output
 ```
 
-- Exit code 2 means the token is missing or expired (it lasts about 1 hour).
-- Ask the user to copy a fresh token with `tools/get_token.js` and run `ntulearn auth --clipboard`.
-- If you can drive the user's already-logged-in browser, you may read `JSON.parse(atob(sessionStorage.getItem('fnds.token.normal'))).accessToken` from an NTULearn tab and pipe it into `ntulearn auth --stdin`. Never type or ask for the user's password.
+- If there is no valid login, this opens a separate Chrome/Edge window and waits up to 5 minutes. Tell the user to log in to NTULearn in that window; it closes by itself.
+- Never type, ask for or read the user's password, and never try to extract the token yourself.
+- Exit code 3 means no supported browser was found or the window was closed. Fall back to the manual path: the user runs `tools/get_token.js` in a logged-in tab and then `ntulearn auth --clipboard`.
+- Add `--no-download` when only dates, grades and announcements are needed.
 
 ## 2. Read what changed
 

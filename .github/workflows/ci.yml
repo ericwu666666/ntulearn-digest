@@ -22,9 +22,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Unit tests (no network, no NTU account)
+      - name: Unit tests and headless-browser end-to-end test against a mock NTULearn
+        env:
+          NTULEARN_BROWSER_ARGS: ${{ runner.os == 'Linux' && '--no-sandbox' || '' }}
         run: python -m unittest discover -s tests -v
-      - name: Install and build the demo
+      - name: pip install and demo
         run: |
           pip install .
           ntulearn demo -o demo-output
+      - name: Double-click launcher (macOS)
+        if: runner.os == 'macOS'
+        run: echo | ./Start-macOS.command demo -o launcher-demo && test -s launcher-demo/dashboard.html
+      - name: Double-click launcher (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: echo.| Start-Windows.bat demo -o launcher-demo && if not exist launcher-demo\dashboard.html exit /b 1

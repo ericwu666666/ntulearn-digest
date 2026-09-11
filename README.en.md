@@ -8,50 +8,69 @@ Turn the scattered pieces of NTULearn into **one calendar, one deadline dashboar
 
 ## What it does
 
-Exam dates, quizzes, assignment deadlines and announcements live in different course sites, PDFs and gradebooks. The project has two layers:
-
 | Layer | Who | What |
 |---|---|---|
-| Fetch and render | the `ntulearn` CLI | Reads courses, content trees, gradebooks and announcements, downloads every file, writes an `.ics` calendar, an HTML dashboard and Markdown summaries, and diffs each sync against the previous one |
+| Fetch and render | the `ntulearn` command | Reads courses, content, gradebooks and announcements, downloads every file, writes an `.ics` calendar, an HTML dashboard and text summaries, and lists what changed since last time |
 | Read and organise | an AI assistant such as Claude Code | Reads syllabi and announcements, writes each course's assessment breakdown, policies and weekly topics, and adds exam dates that only exist in PDFs to the calendar |
 
-Gradebook items with due dates go into the calendar directly. Exam times usually sit only in the course outline, so the AI reads them into `events.json` and the calendar is rebuilt.
+## Three ways to start
 
-## Quick start
+All of them need **Python 3.9+** and **Chrome or Edge**.
 
-Python 3.9+, no third-party dependencies.
+### 1. Double-click, no terminal
+
+1. On this page click the green **Code** button, then **Download ZIP**, and unzip it.
+2. Double-click `Start-macOS.command` on a Mac or `Start-Windows.bat` on Windows.
+3. The first run installs itself, then opens a browser window. Log in to NTULearn there as usual.
+4. The window closes by itself, the sync runs and the dashboard opens. Later runs usually need no password.
+
+If macOS says the developer cannot be verified, right-click the file and choose **Open**.
+
+### 2. One command
+
+```bash
+uv tool install git+https://github.com/ericwu666666/ntulearn-digest
+ntulearn go
+```
+
+Without [uv](https://docs.astral.sh/uv/), `pipx install git+https://github.com/ericwu666666/ntulearn-digest` works the same way.
+
+### 3. Developers
 
 ```bash
 git clone https://github.com/ericwu666666/ntulearn-digest.git
 cd ntulearn-digest
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
-ntulearn demo        # preview with fictional data in demo-output/
+ntulearn demo --open   # preview with fictional data
+ntulearn go
 ```
 
-### 1. Copy your token
+## How login works
 
-1. Log in to NTULearn in Chrome or Edge.
-2. Open DevTools (F12, or ⌥⌘J on a Mac), paste the one-liner from [`tools/get_token.js`](tools/get_token.js) into the Console and press Enter. The token is now on your clipboard.
-3. In a terminal:
+- When there is no valid login, `ntulearn go` opens a **separate window** of your installed Chrome or Edge. It uses its own profile folder and never touches your normal browser data.
+- You type your password into Microsoft's own sign-in page. The tool never sees it.
+- After sign-in, NTULearn keeps a one-hour access token in the page. The tool reads it locally over the DevTools protocol on 127.0.0.1, closes the window, and stores the token at `~/.config/ntulearn-digest/token`, readable by you only.
+- The separate window remembers your session, so when the token expires the window usually closes again within seconds without asking for a password.
+- `ntulearn logout` deletes the saved token and that window's session.
 
-```bash
-ntulearn auth --clipboard
-```
+Manual fallback: in a logged-in NTULearn tab, run the one-liner from [`tools/get_token.js`](tools/get_token.js) in the DevTools console, then `ntulearn auth --clipboard`.
 
-The token expires after about an hour; repeat when it does. The tool never sees your password. The token is stored only at `~/.config/ntulearn-digest/token`, readable by you alone.
+## Everyday commands
 
-### 2. Sync
+| Command | What it does |
+|---|---|
+| `ntulearn go` | Log in if needed, sync, open the dashboard |
+| `ntulearn go --no-download` | Skip course files, refresh dates, grades and announcements only |
+| `ntulearn go --course HE3001` | Only this course; repeatable |
+| `ntulearn go --term 26S1` | Pick a term; the latest is chosen by default |
+| `ntulearn build` | Rebuild the calendar and dashboard after editing `events.json` |
+| `ntulearn demo --open` | Preview with fictional data |
+| `ntulearn logout` | Remove the saved login from this computer |
 
-```bash
-ntulearn sync
-```
+Output goes to `ntulearn-output/` in the current folder; change it with `-o`. Later syncs only download new files, and `changes.md` lists new announcements, new gradebook items, moved due dates and released grades.
 
-By default it picks the latest term from the course ID prefix (for example `26S1`), downloads all files and renders every output. Options: `--term 26S1`, `--course HE3001` (repeatable), `--no-download`, `-o <folder>` and `--workers 4`. Please keep concurrency low.
-
-Later runs only download new files, and `changes.md` lists new announcements, new gradebook items, moved due dates and released grades.
-
-### 3. Weekly class times (optional)
+## Weekly class times (optional)
 
 NTULearn does not expose class times, but NTU's public class schedule does. Use your STARS index or group names:
 
@@ -62,7 +81,7 @@ ntulearn classes HE3001:19541 HW0218:GP12 \
 
 `--week1` is the Monday of teaching week 1. A recess week after week 7 is assumed. Public holidays are not removed automatically; list them with `--skip`.
 
-### 4. Let an AI fill in exams and course notes (optional)
+## Let an AI fill in exams and course notes (optional)
 
 The repo ships a Claude Code skill in [`.claude/skills/ntulearn-digest`](.claude/skills/ntulearn-digest/SKILL.md). Open Claude Code in the repo and say "update NTULearn". It syncs, reads `changes.md`, reads the changed syllabi and announcements, writes `notes.md` per course with a source for every number, adds missing exams to `events.json`, rebuilds, and tells you what is due in the next three days.
 
@@ -81,21 +100,22 @@ Without Claude Code, write `events.json` by hand following [`examples/events.exa
 
 ## How it works
 
-NTULearn runs Blackboard Learn Ultra. The web app keeps a short-lived access token in `sessionStorage`, and that token is accepted by Blackboard's public REST API at `/learn/api/public/v1`. The tool sends GET requests only and reads only what you can already see: your course list with a membership check that reveals dropped courses, content trees and attachments, Ultra document bodies (files embedded in a page only appear there), gradebook columns with your own status, and announcements.
+NTULearn runs Blackboard Learn Ultra. The page's access token is accepted by Blackboard's public REST API at `/learn/api/public/v1`. The tool sends GET requests only and reads only what you can already see: your course list with a membership check that reveals dropped courses, content trees and attachments, Ultra page bodies with their embedded files, gradebook due dates with your own status, and announcements.
 
 ## Privacy, copyright and fair use
 
 - **Never commit or share your output folder.** It contains your lecturers' materials and your grades. The default output folder is already in `.gitignore`.
 - Course materials belong to their authors and the university. Keep them for your own study.
-- A token is a live login for about an hour. Do not share it.
+- The token and the login window's profile folder are equivalent to being logged in. They stay on your computer; do not share them.
 - This is an unofficial personal tool, unrelated to NTU or Blackboard. Check that your use fits your university's IT policies. It defaults to low concurrency with backoff; please do not raise it or run it in a tight loop.
 - "No submission in gradebook" only means the gradebook shows no attempt. Turnitin or survey submissions may not appear there.
 
 ## Limitations
 
-- Tested on NTULearn only. Other Blackboard Ultra sites may work with `--base-url`.
+- Only used on NTULearn so far. Other Blackboard Ultra sites may work with `--base-url`.
+- One-click login needs Chrome, Edge, Chromium or Brave. Use the manual fallback otherwise.
 - Closed courses refuse file downloads.
-- Exam times and weightings that only exist in PDFs need step 4 or manual entry.
+- Exam times and weightings that only exist in PDFs need an AI or manual entry.
 
 ## Development
 
@@ -103,7 +123,7 @@ NTULearn runs Blackboard Learn Ultra. The web app keeps a short-lived access tok
 python -m unittest discover -s tests -v
 ```
 
-Tests run against an in-memory fake Blackboard API, with no network or account. Issues and pull requests are welcome.
+The suite has unit tests against an in-memory fake Blackboard API, plus an end-to-end test that starts headless Chrome, logs in to a local mock NTULearn and syncs over real HTTP. CI runs everything, including the double-click launchers, on Linux, macOS and Windows.
 
 ## License
 

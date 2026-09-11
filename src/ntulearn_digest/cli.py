@@ -1,15 +1,17 @@
-"""Command line entry point: ntulearn auth | sync | build | classes | demo"""
+"""Command line entry point: ntulearn go | login | sync | build | classes | demo | auth | logout"""
 from __future__ import annotations
 
 import argparse
 import shutil
 import sys
+import webbrowser
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from . import __version__
-from .auth import AuthError, load_token, minutes_left, normalize_token, prompt_token, read_clipboard, save_token
+from .auth import (AuthError, default_token_path, load_token, minutes_left, normalize_token, prompt_token,
+                   read_clipboard, save_token)
 from .build import build_outputs, load_events
 from .client import ApiError, Blackboard
 from .crawl import sync as run_sync
@@ -26,37 +28,76 @@ def _say(msg: str) -> None:
     print(msg, flush=True)
 
 
+def _token_path(args) -> Path:
+    return Path(args.token_file) if getattr(args, "token_file", None) else default_token_path()
+
+
+def _verify_and_save(args, token: str) -> Blackboard:
+    bb = Blackboard(args.base_url, token, retries=2)
+    try:
+        me = bb.get("users/me")
+    except ApiError as e:
+        raise AuthError(f"NTULearn 不接受这个 token（HTTP {e.status}）。请重新登录或重新复制。") from None
+    path = save_token(token, _token_path(args))
+    left = minutes_left(token)
+    name = (me.get("name") or {}).get("given") or me.get("userName") or "你"
+    _say(f"已登录：{name}。token 保存在 {path}（仅本机可读）" + (f"，大约 {left} 分钟内有效。" if left is not None else "。"))
+    return Blackboard(args.base_url, token)
+
+
+def _browser_login(args) -> Blackboard:
+    from .browser import capture_token
+
+    token = capture_token(args.base_url, browser=args.browser, profile=Path(args.profile) if args.profile else None,
+                          headless=args.headless, timeout=args.timeout, log=_say)
+    return _verify_and_save(args, token)
+
+
+def _saved_client(args, min_minutes: int = 0) -> Optional[Blackboard]:
+    try:
+        token = load_token(path=_token_path(args))
+    except AuthError:
+        return None
+    left = minutes_left(token)
+    if left is not None and left <= min_minutes:
+        return None
+    return Blackboard(args.base_url, token)
+
+
 def cmd_auth(args) -> int:
     if args.stdin:
         raw = sys.stdin.read()
     else:
         raw = read_clipboard() if args.clipboard else prompt_token()
-    token = normalize_token(raw)
-    bb = Blackboard(args.base_url, token, retries=2)
-    try:
-        me = bb.get("users/me")
-    except ApiError as e:
-        _say(f"token 验证失败（HTTP {e.status}）。请在已登录的 NTULearn 标签页重新复制。")
-        return 1
-    path = save_token(token, Path(args.token_file) if args.token_file else None)
-    left = minutes_left(token)
-    name = (me.get("name") or {}).get("given") or me.get("userName") or "你"
-    _say(f"已登录：{name}。token 保存在 {path}（仅本机可读）" + (f"，大约还能用 {left} 分钟。" if left is not None else "。"))
+    _verify_and_save(args, normalize_token(raw))
     return 0
 
 
-def _client(args) -> Blackboard:
-    token = load_token(path=Path(args.token_file) if args.token_file else None)
-    left = minutes_left(token)
-    if left is not None and left <= 0:
-        raise AuthError("token 已过期（大约 1 小时有效）。重新复制后运行 `ntulearn auth`。")
-    return Blackboard(args.base_url, token)
+def cmd_login(args) -> int:
+    _browser_login(args)
+    return 0
+
+
+def cmd_logout(args) -> int:
+    from .browser import default_profile_dir
+
+    removed = []
+    token = _token_path(args)
+    if token.exists():
+        token.unlink()
+        removed.append(str(token))
+    profile = Path(args.profile) if args.profile else default_profile_dir()
+    if profile.exists():
+        shutil.rmtree(profile, ignore_errors=True)
+        removed.append(str(profile))
+    _say("已删除：" + "、".join(removed) if removed else "本机没有保存的登录信息。")
+    return 0
 
 
 def _build(out: Path, tz_name: str, diff: Optional[dict] = None) -> int:
     snapshot = read_json(out / "snapshot.json")
     if not snapshot:
-        _say(f"{out}/snapshot.json 不存在，先运行 `ntulearn sync`。")
+        _say(f"{out}/snapshot.json 不存在，先运行 `ntulearn go` 或 `ntulearn sync`。")
         return 1
     if diff is None:
         diff = read_json(out / "changes.json")
@@ -81,10 +122,9 @@ def _print_urgent(out: Path, tz_name: str) -> None:
             _say(f"  {from_iso(i['start'], tz):%m/%d %H:%M}  {i['title']}")
 
 
-def cmd_sync(args) -> int:
+def _sync_with(args, bb: Blackboard) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    bb = _client(args)
     old = read_json(out / "snapshot.json")
     snapshot = run_sync(bb, out, term=args.term, all_terms=args.all_terms, download=not args.no_download,
                         workers=args.workers, log=_say, only=args.course)
@@ -101,6 +141,31 @@ def cmd_sync(args) -> int:
     _say(f"同步完成，共 {bb.requests} 次请求。")
     code = _build(out, args.tz, diff)
     _print_urgent(out, args.tz)
+    return code
+
+
+def cmd_sync(args) -> int:
+    bb = _saved_client(args)
+    if bb is None:
+        raise AuthError("没有可用的登录。运行 `ntulearn login`（自动弹出浏览器）或 `ntulearn go`。")
+    return _sync_with(args, bb)
+
+
+def cmd_go(args) -> int:
+    bb = _saved_client(args, min_minutes=10)
+    if bb is None:
+        bb = _browser_login(args)
+    try:
+        code = _sync_with(args, bb)
+    except ApiError as e:
+        if e.status != 401:
+            raise
+        _say("登录已失效，重新登录一次。")
+        code = _sync_with(args, _browser_login(args))
+    dashboard = Path(args.out) / "dashboard.html"
+    if code == 0 and not args.no_open and dashboard.exists():
+        webbrowser.open(dashboard.resolve().as_uri())
+        _say(f"\n已在浏览器打开看板：{dashboard}")
     return code
 
 
@@ -154,11 +219,13 @@ def cmd_demo(args) -> int:
     _say("示例数据（全部虚构）已生成：")
     for p in written.values():
         _say(f"  {p}")
+    if getattr(args, "open", False):
+        webbrowser.open((out / "dashboard.html").resolve().as_uri())
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="ntulearn", description="把 NTULearn 整理成日历、看板和 AI 可读的笔记。")
+    p = argparse.ArgumentParser(prog="ntulearn", description="把 NTULearn 整理成日历、看板和 AI 可读的笔记。最简单的用法：ntulearn go")
     p.add_argument("--version", action="version", version=f"ntulearn-digest {__version__}")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("-o", "--out", default=DEFAULT_OUT, help=f"输出文件夹（默认 {DEFAULT_OUT}）")
@@ -166,19 +233,28 @@ def build_parser() -> argparse.ArgumentParser:
     net = argparse.ArgumentParser(add_help=False)
     net.add_argument("--base-url", default=DEFAULT_BASE, help="Blackboard Ultra 网址")
     net.add_argument("--token-file", help="token 文件位置（默认 ~/.config/ntulearn-digest/token）")
+    browser = argparse.ArgumentParser(add_help=False)
+    browser.add_argument("--browser", help="Chrome / Edge 可执行文件路径（默认自动查找）")
+    browser.add_argument("--profile", help="登录用的浏览器配置文件夹（默认 ~/.config/ntulearn-digest/browser-profile）")
+    browser.add_argument("--timeout", type=float, default=300, help="等待登录的秒数（默认 300）")
+    browser.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
+    syncopts = argparse.ArgumentParser(add_help=False)
+    syncopts.add_argument("--term", help="学期代码，如 26S1（默认自动选最新学期）")
+    syncopts.add_argument("--all-terms", action="store_true", help="不过滤学期")
+    syncopts.add_argument("--course", action="append", metavar="CODE", help="只同步这门课，可重复，如 --course HE3001")
+    syncopts.add_argument("--no-download", action="store_true", help="只抓数据，不下载文件")
+    syncopts.add_argument("--workers", type=int, default=4, help="并发数（默认 4，请不要调太高）")
     sub = p.add_subparsers(dest="command", required=True)
 
-    a = sub.add_parser("auth", parents=[net], help="保存从浏览器复制的 token")
-    a.add_argument("--clipboard", action="store_true", help="直接从剪贴板读取")
-    a.add_argument("--stdin", action="store_true", help="从标准输入读取（给脚本或 AI 助手用）")
-    a.set_defaults(func=cmd_auth)
+    g = sub.add_parser("go", parents=[common, net, browser, syncopts],
+                       help="一键：需要时自动弹出浏览器登录，然后同步并打开看板")
+    g.add_argument("--no-open", action="store_true", help="完成后不自动打开看板")
+    g.set_defaults(func=cmd_go)
 
-    s = sub.add_parser("sync", parents=[common, net], help="抓取课程、文件、成绩簿、公告，并生成全部输出")
-    s.add_argument("--term", help="学期代码，如 26S1（默认自动选最新学期）")
-    s.add_argument("--all-terms", action="store_true", help="不过滤学期")
-    s.add_argument("--course", action="append", metavar="CODE", help="只同步这门课，可重复，如 --course HE3001")
-    s.add_argument("--no-download", action="store_true", help="只抓数据，不下载文件")
-    s.add_argument("--workers", type=int, default=4, help="并发数（默认 4，请不要调太高）")
+    lg = sub.add_parser("login", parents=[net, browser], help="弹出浏览器窗口登录，自动保存 token")
+    lg.set_defaults(func=cmd_login)
+
+    s = sub.add_parser("sync", parents=[common, net, syncopts], help="用已保存的登录抓取数据并生成输出，不弹浏览器")
     s.set_defaults(func=cmd_sync)
 
     b = sub.add_parser("build", parents=[common], help="只根据已有数据重新生成日历和看板（改完 events.json 后用）")
@@ -193,7 +269,17 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(func=cmd_classes)
 
     d = sub.add_parser("demo", parents=[common], help="用虚构数据生成示例输出，不需要账号")
+    d.add_argument("--open", action="store_true", help="生成后打开看板")
     d.set_defaults(func=cmd_demo, out="demo-output")
+
+    a = sub.add_parser("auth", parents=[net], help="手动方式：粘贴从浏览器复制的 token")
+    a.add_argument("--clipboard", action="store_true", help="直接从剪贴板读取")
+    a.add_argument("--stdin", action="store_true", help="从标准输入读取（给脚本或 AI 助手用）")
+    a.set_defaults(func=cmd_auth)
+
+    lo = sub.add_parser("logout", parents=[net], help="删除本机保存的 token 和登录用浏览器配置")
+    lo.add_argument("--profile", help="登录用的浏览器配置文件夹")
+    lo.set_defaults(func=cmd_logout)
     return p
 
 
@@ -217,10 +303,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     except ApiError as e:
         if e.status == 401:
-            _say("NTULearn 拒绝了 token（401），多半是过期了。重新复制后运行 `ntulearn auth`。")
+            _say("NTULearn 拒绝了登录（401），多半是过期了。运行 `ntulearn go` 重新登录。")
             return 2
         _say(f"请求失败：{e}")
         return 1
     except KeyboardInterrupt:
         _say("已中断。")
         return 130
+    except Exception as e:  # browser problems and similar: short message instead of a traceback
+        from .browser import BrowserError
+
+        if isinstance(e, BrowserError):
+            _say(str(e))
+            return 3
+        raise
