@@ -1,0 +1,25 @@
+{
+  "_说明": "NTULearn 成绩簿里没有的时间（期中、期末、展示、线下 quiz）写在这里。放到输出文件夹里命名为 events.json，再运行 ntulearn build。时间不带时区时按 --tz（默认新加坡时间）理解；只写日期则是全天事件。source 写清楚出处，方便以后核对。",
+  "events": [
+    {
+      "course": "ZX1001",
+      "title": "Midterm Test",
+      "kind": "exam",
+      "start": "2026-09-21T09:45",
+      "end": "2026-09-21T11:00",
+      "location": "LT25",
+      "weight": "20%",
+      "detail": "Weeks 1–4 and Tutorials 1–4. One double-sided A4 help sheet allowed.",
+      "source": "Announcement 'Midterm Information', 2026-09-07"
+    },
+    {
+      "course": "ZX2002",
+      "title": "Group presentation week",
+      "kind": "event",
+      "start": "2026-10-19",
+      "end": "2026-10-23",
+      "detail": "15 min talk + 5 min Q&A. Exact slot to be announced.",
+      "source": "Course outline p.4"
+    }
+  ]
+}

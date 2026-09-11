@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ntulearn-digest"
+version = "0.1.0"
+description = "Sync your NTULearn (Blackboard Ultra) courses into a calendar, a deadline dashboard and AI-readable notes."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Xinyue Wu"}]
+keywords = ["ntu", "ntulearn", "blackboard", "calendar", "ics", "claude-code"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Education",
+]
+dependencies = []
+
+[project.optional-dependencies]
+windows = ["tzdata"]
+
+[project.scripts]
+ntulearn = "ntulearn_digest.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ntulearn_digest = ["*.html"]

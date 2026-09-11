@@ -1,0 +1,13 @@
+# 你的课程数据和登录凭证绝对不要提交
+ntulearn-output/
+demo-output/
+*.token
+token
+.env
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.DS_Store
