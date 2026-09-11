@@ -13,7 +13,7 @@
 | 层 | 谁来做 | 做什么 |
 |---|---|---|
 | 抓取与生成 | `ntulearn` 命令 | 读课程、内容、成绩簿和公告，下载全部文件，生成 `.ics` 日历、HTML 看板和文字汇总，并列出和上次相比的变化 |
-| 阅读与整理 | Claude Code 等 AI 助手 | 读课程大纲和公告，整理考核占比、政策和逐周内容，把只写在 PDF 里的考试时间补进日历 |
+| 阅读与整理 | Claude Code、Codex 等 AI agent | 读课程大纲和公告，整理考核占比、政策和逐周内容，把只写在 PDF 里的考试时间补进日历 |
 
 ## 三种上手方式
 
@@ -85,14 +85,16 @@ ntulearn classes HE3001:19541 HW0218:GP12 \
 
 ## 让 AI 补齐考试时间和课程要点（可选）
 
-仓库自带 Claude Code 技能 [`.claude/skills/ntulearn-digest`](.claude/skills/ntulearn-digest/SKILL.md)。在仓库目录里打开 Claude Code，说一句「更新 NTULearn」，它会：
+仓库给 AI agent 准备了操作说明。Claude Code 会自动加载 [技能](.claude/skills/ntulearn-digest/SKILL.md)，Codex、Cursor、Gemini CLI 等会读根目录的 [`AGENTS.md`](AGENTS.md)，两份内容一致。在仓库文件夹里打开任意一个 agent，说一句「更新 NTULearn」，它会：
 
 1. 运行同步，先看 `changes.md`；
 2. 读有变化的课程大纲、考试通知和公告，为每门课写 `notes.md`，包括考核占比、形式、政策、逐周内容和每个数字的出处；
 3. 把成绩簿里没有的考试和展示写进 `events.json`，重新生成日历；
 4. 告诉你三天内要做什么。
 
-不用 Claude Code 也可以：照 [`examples/events.example.json`](examples/events.example.json) 手写 `events.json`，放进输出文件夹，运行 `ntulearn build`。
+Codex 这类在沙盒里运行的 agent 可能不能联网或弹出浏览器。遇到这种情况，它会请你先在终端运行 `ntulearn go`，然后接着整理。
+
+不用 AI 也可以：照 [`examples/events.example.json`](examples/events.example.json) 手写 `events.json`，放进输出文件夹，运行 `ntulearn build`。
 
 ## 输出
 

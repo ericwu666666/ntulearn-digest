@@ -11,7 +11,7 @@ Turn the scattered pieces of NTULearn into **one calendar, one deadline dashboar
 | Layer | Who | What |
 |---|---|---|
 | Fetch and render | the `ntulearn` command | Reads courses, content, gradebooks and announcements, downloads every file, writes an `.ics` calendar, an HTML dashboard and text summaries, and lists what changed since last time |
-| Read and organise | an AI assistant such as Claude Code | Reads syllabi and announcements, writes each course's assessment breakdown, policies and weekly topics, and adds exam dates that only exist in PDFs to the calendar |
+| Read and organise | an AI agent such as Claude Code or Codex | Reads syllabi and announcements, writes each course's assessment breakdown, policies and weekly topics, and adds exam dates that only exist in PDFs to the calendar |
 
 ## Three ways to start
 
@@ -83,9 +83,11 @@ ntulearn classes HE3001:19541 HW0218:GP12 \
 
 ## Let an AI fill in exams and course notes (optional)
 
-The repo ships a Claude Code skill in [`.claude/skills/ntulearn-digest`](.claude/skills/ntulearn-digest/SKILL.md). Open Claude Code in the repo and say "update NTULearn". It syncs, reads `changes.md`, reads the changed syllabi and announcements, writes `notes.md` per course with a source for every number, adds missing exams to `events.json`, rebuilds, and tells you what is due in the next three days.
+The repo ships instructions for AI agents. Claude Code loads the [skill](.claude/skills/ntulearn-digest/SKILL.md) automatically, and Codex, Cursor, Gemini CLI and others read [`AGENTS.md`](AGENTS.md) at the repo root; both say the same thing. Open any of them in the repo and say "update NTULearn". It syncs, reads `changes.md`, reads the changed syllabi and announcements, writes `notes.md` per course with a source for every number, adds missing exams to `events.json`, rebuilds, and tells you what is due in the next three days.
 
-Without Claude Code, write `events.json` by hand following [`examples/events.example.json`](examples/events.example.json) and run `ntulearn build`.
+Sandboxed agents such as Codex may be unable to reach the internet or open a browser. They will ask you to run `ntulearn go` first and then carry on.
+
+Without any AI, write `events.json` by hand following [`examples/events.example.json`](examples/events.example.json) and run `ntulearn build`.
 
 ## Outputs
 
