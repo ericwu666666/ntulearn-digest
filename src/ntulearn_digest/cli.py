@@ -197,7 +197,18 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _utf8_output() -> None:
+    """Windows consoles and CI pipes may default to cp1252, which cannot print Chinese."""
+    for stream in (sys.stdout, sys.stderr):
+        if (getattr(stream, "encoding", "") or "").lower().replace("-", "") != "utf8":
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    _utf8_output()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
