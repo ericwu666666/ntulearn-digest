@@ -24,6 +24,7 @@ Python 3.9+, no third-party dependencies.
 ```bash
 git clone https://github.com/ericwu666666/ntulearn-digest.git
 cd ntulearn-digest
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
 ntulearn demo        # preview with fictional data in demo-output/
 ```
